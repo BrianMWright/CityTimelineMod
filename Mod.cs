@@ -1,31 +1,23 @@
-﻿using System;
-using Colossal.Logging;
-using Game;                // UpdateSystem
-using Game.Modding;        // IMod
-using UnityEngine;
+﻿// src/Mod.cs
+using Game.Modding;
+using Game;
 
 namespace CityTimelineMod
 {
     public sealed class Mod : IMod
     {
-        public static ILog Log = LogManager.GetLogger(nameof(CityTimelineMod)).SetShowsErrorsInUI(true);
+        public string Name => "CityTimelineMod";
+        public string Description => "Realtime data → in-game placement scaffold (Irvine proof-of-concept)";
 
         public void OnLoad(UpdateSystem updateSystem)
         {
-            Debug.Log("[CityTimelineMod] It loaded! (UnityEngine)");
-            Log.Info("[CityTimelineMod] It loaded! (Colossal)");
-
-            try { IrvineBootstrap.RunOnce(); }
-            catch (Exception ex)
-            {
-                Debug.LogError("[CityTimelineMod] Bootstrap error: " + ex);
-                Log.Error(ex);
-            }
+            // Kick off our one-time bootstrap (parses GeoJSON, transforms, draws debug lines)
+            IrvineBootstrap.RunOnce();
         }
 
         public void OnDispose()
         {
-            Log.Info("[CityTimelineMod] Disposed.");
+            // No-op for now; add cleanup if we start registering systems or allocating resources
         }
     }
 }
