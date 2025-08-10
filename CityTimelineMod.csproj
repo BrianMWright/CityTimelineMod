@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <Configurations>Debug;Release</Configurations>
-    <!-- Keep the toolchain in charge of TFMs/output -->
+    <!-- Keep the CS2 toolchain in charge of TFMs/output -->
     <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
     <PublishConfigurationPath>Properties\PublishConfiguration.xml</PublishConfigurationPath>
     <Nullable>disable</Nullable>
@@ -17,7 +17,11 @@
     <Reference Include="Colossal.Core"><Private>false</Private></Reference>
     <Reference Include="Colossal.Logging"><Private>false</Private></Reference>
     <Reference Include="Colossal.IO.AssetDatabase"><Private>false</Private></Reference>
+
+    <!-- Unity assemblies -->
     <Reference Include="UnityEngine.CoreModule"><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.InputLegacyModule"><Private>false</Private></Reference>
+
     <Reference Include="Unity.Burst"><Private>false</Private></Reference>
     <Reference Include="Unity.Collections"><Private>false</Private></Reference>
     <Reference Include="Unity.Entities"><Private>false</Private></Reference>
@@ -35,7 +39,7 @@
     <None Include="$(ModTargetsFile)" Link="Properties\Mod.targets" />
   </ItemGroup>
 
-  <!-- Use Newtonsoft.Json for GeoJSON parsing; don't ship its runtime -->
+  <!-- Use Newtonsoft.Json for GeoJSON parsing; do not ship its runtime -->
   <ItemGroup>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3">
       <ExcludeAssets>runtime;native;contentfiles;analyzers;buildtransitive</ExcludeAssets>

@@ -1,4 +1,5 @@
 // src/Importers/GeoJson.cs
+#nullable enable
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -8,105 +9,132 @@ namespace CityTimelineMod.Importers
 {
     internal static class GeoJson
     {
-        // Count features in a FeatureCollection (sanity check)
+        /// Quick count for sanity/logging.
         internal static int CountFeatures(string path)
         {
-            if (!File.Exists(path))
-                throw new FileNotFoundException(path);
-
-            var json = File.ReadAllText(path);
-            JObject root;
-            try { root = JObject.Parse(json); }
-            catch (Exception ex) { throw new InvalidDataException("Invalid JSON", ex); }
-
-            var typeToken = root["type"];
-            var type = typeToken != null ? typeToken.ToString() : null;
-            if (type == null || !string.Equals(type, "FeatureCollection", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidDataException("Not a FeatureCollection");
-
-            var features = root["features"] as JArray;
-            if (features == null)
-                throw new InvalidDataException("'features' is missing or not an array");
-
-            return features.Count;
+            if (!File.Exists(path)) throw new FileNotFoundException(path);
+            var root = JObject.Parse(File.ReadAllText(path));
+            var feats = (JArray?)root["features"] ?? throw new InvalidDataException("Not a FeatureCollection");
+            return feats.Count;
         }
 
-        // Read all LineStrings & MultiLineStrings -> list of (x,y) in EPSG:2230 feet
-        internal static List<List<(double x, double y)>> ReadLineStrings(string path)
+        /// Return a list of LineString parts. MultiLineStrings are expanded into multiple parts.
+        internal static List<List<(double x, double y)>> ReadLineParts(string path)
         {
-            var json = File.ReadAllText(path);
-            var root = JObject.Parse(json);
+            if (!File.Exists(path)) throw new FileNotFoundException(path);
+            var root = JObject.Parse(File.ReadAllText(path));
+            var feats = (JArray?)root["features"] ?? throw new InvalidDataException("Not a FeatureCollection");
 
-            var lines = new List<List<(double, double)>>();
+            var parts = new List<List<(double x, double y)>>();
 
-            var features = root["features"] as JArray ?? new JArray();
-            foreach (var f in features)
+            foreach (var f in feats)
             {
-                var geom = f["geometry"] as JObject;
-                if (geom == null) continue;
+                var geom = f?["geometry"] as JObject;
+                if (geom is null) continue;
+                var type = (string?)geom["type"] ?? "";
+                var coords = geom["coordinates"];
 
-                var gtype = geom["type"] != null ? geom["type"].ToString() : null;
-                if (string.Equals(gtype, "LineString", StringComparison.OrdinalIgnoreCase))
+                switch (type)
                 {
-                    var coords = (JArray)geom["coordinates"];
-                    lines.Add(ParseLineCoords(coords));
-                }
-                else if (string.Equals(gtype, "MultiLineString", StringComparison.OrdinalIgnoreCase))
-                {
-                    var parts = (JArray)geom["coordinates"];
-                    foreach (var part in parts)
-                        lines.Add(ParseLineCoords((JArray)part));
-                }
-            }
-            return lines;
-        }
-
-        // Read Polygon/MultiPolygon outer rings -> list of (x,y) in EPSG:2230 feet
-        internal static List<List<(double x, double y)>> ReadPolygonOuterRings(string path)
-        {
-            var json = File.ReadAllText(path);
-            var root = JObject.Parse(json);
-
-            var rings = new List<List<(double, double)>>();
-
-            var features = root["features"] as JArray ?? new JArray();
-            foreach (var f in features)
-            {
-                var geom = f["geometry"] as JObject;
-                if (geom == null) continue;
-
-                var gtype = geom["type"] != null ? geom["type"].ToString() : null;
-                if (string.Equals(gtype, "Polygon", StringComparison.OrdinalIgnoreCase))
-                {
-                    var polys = (JArray)geom["coordinates"]; // [ [outer], [hole1], ... ]
-                    if (polys.Count > 0) rings.Add(ParseLineCoords((JArray)polys[0]));
-                }
-                else if (string.Equals(gtype, "MultiPolygon", StringComparison.OrdinalIgnoreCase))
-                {
-                    var multi = (JArray)geom["coordinates"]; // [ [ [outer], [hole]... ], ... ]
-                    foreach (var poly in multi)
+                    case "LineString":
                     {
-                        var ringsArray = (JArray)poly;
-                        if (ringsArray.Count > 0)
-                            rings.Add(ParseLineCoords((JArray)ringsArray[0])); // outer only
+                        var line = new List<(double x, double y)>();
+                        foreach (var p in (JArray)coords!)
+                        {
+                            // coordinates are [x, y] (lon, lat) or projected feet for 2230
+                            double x = p[0]!.Value<double>();
+                            double y = p[1]!.Value<double>();
+                            line.Add((x, y));
+                        }
+                        if (line.Count > 1) parts.Add(line);
+                        break;
+                    }
+                    case "MultiLineString":
+                    {
+                        foreach (var seg in (JArray)coords!)
+                        {
+                            var line = new List<(double x, double y)>();
+                            foreach (var p in (JArray)seg!)
+                            {
+                                double x = p[0]!.Value<double>();
+                                double y = p[1]!.Value<double>();
+                                line.Add((x, y));
+                            }
+                            if (line.Count > 1) parts.Add(line);
+                        }
+                        break;
                     }
                 }
             }
-            return rings;
+
+            return parts;
         }
 
-        // Helpers
-        private static List<(double x, double y)> ParseLineCoords(JArray coords)
+        /// Return the **outer** ring of each polygon (first ring). MultiPolygons → many outers.
+        internal static List<List<(double x, double y)>> ReadAreaOuterRings(string path)
         {
-            var list = new List<(double, double)>(coords.Count);
-            foreach (var c in coords)
+            if (!File.Exists(path)) throw new FileNotFoundException(path);
+            var root = JObject.Parse(File.ReadAllText(path));
+            var feats = (JArray?)root["features"] ?? throw new InvalidDataException("Not a FeatureCollection");
+
+            var rings = new List<List<(double x, double y)>>();
+
+            foreach (var f in feats)
             {
-                var arr = (JArray)c;
-                double x = arr[0].Value<double>();
-                double y = arr[1].Value<double>();
-                list.Add((x, y));
+                var geom = f?["geometry"] as JObject;
+                if (geom is null) continue;
+                var type = (string?)geom["type"] ?? "";
+                var coords = geom["coordinates"];
+
+                switch (type)
+                {
+                    case "Polygon":
+                    {
+                        // polygon -> [ [outer], [hole1], [hole2], ... ]
+                        if (coords is JArray poly && poly.Count > 0)
+                        {
+                            var outer = poly[0] as JArray;
+                            if (outer != null)
+                            {
+                                var ring = new List<(double x, double y)>();
+                                foreach (var p in outer)
+                                {
+                                    double x = p[0]!.Value<double>();
+                                    double y = p[1]!.Value<double>();
+                                    ring.Add((x, y));
+                                }
+                                if (ring.Count > 2) rings.Add(ring);
+                            }
+                        }
+                        break;
+                    }
+                    case "MultiPolygon":
+                    {
+                        // multipolygon -> [ [ [outer], holes... ], [ [outer], ... ], ... ]
+                        foreach (var poly in (JArray)coords!)
+                        {
+                            if (poly is JArray polyArr && polyArr.Count > 0)
+                            {
+                                var outer = polyArr[0] as JArray;
+                                if (outer != null)
+                                {
+                                    var ring = new List<(double x, double y)>();
+                                    foreach (var p in outer)
+                                    {
+                                        double x = p[0]!.Value<double>();
+                                        double y = p[1]!.Value<double>();
+                                        ring.Add((x, y));
+                                    }
+                                    if (ring.Count > 2) rings.Add(ring);
+                                }
+                            }
+                        }
+                        break;
+                    }
+                }
             }
-            return list;
+
+            return rings;
         }
     }
 }
