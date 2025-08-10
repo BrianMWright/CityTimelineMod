@@ -1,4 +1,5 @@
-﻿using System;
+﻿// Mod.cs
+using System;
 using Colossal.Logging;
 using Game;                // UpdateSystem
 using Game.Modding;        // IMod
@@ -10,6 +11,7 @@ namespace CityTimelineMod
     {
         public static ILog Log = LogManager.GetLogger(nameof(CityTimelineMod)).SetShowsErrorsInUI(true);
 
+        // Current CS2 mod interface signature
         public void OnLoad(UpdateSystem updateSystem)
         {
             Debug.Log("[CityTimelineMod] It loaded! (UnityEngine)");
